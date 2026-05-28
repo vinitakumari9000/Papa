@@ -45,6 +45,8 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 
+from utils.secrets import encrypt_secret, redact_text, require_export_permission, require_interactive_confirmation
+
 
 # Constants
 BATCH_SIZE = 5000
@@ -102,6 +104,13 @@ class DatabaseConverter:
         )
         handler.setFormatter(formatter)
 
+        class _RedactionFilter(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                record.msg = redact_text(record.getMessage())
+                record.args = ()
+                return True
+
+        handler.addFilter(_RedactionFilter())
         logger.addHandler(handler)
         return logger
 
@@ -340,7 +349,8 @@ class DatabaseConverter:
         self,
         output_path: Optional[str] = None,
         limit: Optional[int] = None,
-        offset: int = 0
+        offset: int = 0,
+        encrypt_private_keys: bool = False,
     ) -> Optional[str]:
         """
         Export wallets to TXT format: id|address|private_key.
@@ -364,7 +374,8 @@ class DatabaseConverter:
                 row_count = 0
                 for batch in self.fetch_wallets(limit, offset):
                     for wallet_id, address, private_key in batch:
-                        f.write(f"{wallet_id}|{address}|{private_key}\n")
+                        key_out = encrypt_secret(private_key) if encrypt_private_keys else private_key
+                        f.write(f"{wallet_id}|{address}|{key_out}\n")
                         row_count += 1
 
             self.logger.info(f"Exported {row_count} wallets to TXT: {filepath}")
@@ -383,7 +394,8 @@ class DatabaseConverter:
         self,
         output_path: Optional[str] = None,
         limit: Optional[int] = None,
-        offset: int = 0
+        offset: int = 0,
+        encrypt_private_keys: bool = False,
     ) -> Optional[str]:
         """
         Export wallets to JSON format using streaming approach.
@@ -418,7 +430,7 @@ class DatabaseConverter:
                         obj = {
                             "id": wallet_id,
                             "address": address,
-                            "private_key": private_key
+                            "private_key": encrypt_secret(private_key) if encrypt_private_keys else private_key
                         }
                         f.write("  " + json.dumps(obj))
                         row_count += 1
@@ -442,7 +454,8 @@ class DatabaseConverter:
         self,
         output_path: Optional[str] = None,
         limit: Optional[int] = None,
-        offset: int = 0
+        offset: int = 0,
+        encrypt_private_keys: bool = False,
     ) -> Optional[str]:
         """
         Export wallets to CSV format.
@@ -469,7 +482,8 @@ class DatabaseConverter:
                 row_count = 0
                 for batch in self.fetch_wallets(limit, offset):
                     for wallet_id, address, private_key in batch:
-                        writer.writerow([wallet_id, address, private_key])
+                        key_out = encrypt_secret(private_key) if encrypt_private_keys else private_key
+                        writer.writerow([wallet_id, address, key_out])
                         row_count += 1
 
             self.logger.info(f"Exported {row_count} wallets to CSV: {filepath}")
@@ -488,7 +502,8 @@ class DatabaseConverter:
         self,
         output_path: Optional[str] = None,
         limit: Optional[int] = None,
-        offset: int = 0
+        offset: int = 0,
+        encrypt_private_keys: bool = False,
     ) -> Optional[str]:
         """
         Export wallets to SQL INSERT statements.
@@ -528,7 +543,8 @@ class DatabaseConverter:
                     for wallet_id, address, private_key in batch:
                         # Escape single quotes in values
                         addr_escaped = address.replace("'", "''")
-                        key_escaped = private_key.replace("'", "''")
+                        key_out = encrypt_secret(private_key) if encrypt_private_keys else private_key
+                        key_escaped = key_out.replace("'", "''")
                         f.write(
                             f"INSERT INTO wallets (id, address, private_key) "
                             f"VALUES ({wallet_id}, '{addr_escaped}', '{key_escaped}');\n"
@@ -551,7 +567,8 @@ class DatabaseConverter:
         self,
         output_path: Optional[str] = None,
         limit: Optional[int] = None,
-        offset: int = 0
+        offset: int = 0,
+        encrypt_private_keys: bool = False,
     ) -> Optional[str]:
         """
         Export wallets to NDJSON format (newline-delimited JSON).
@@ -578,7 +595,7 @@ class DatabaseConverter:
                         obj = {
                             "id": wallet_id,
                             "address": address,
-                            "private_key": private_key
+                            "private_key": encrypt_secret(private_key) if encrypt_private_keys else private_key
                         }
                         f.write(json.dumps(obj) + "\n")
                         row_count += 1
@@ -599,7 +616,8 @@ class DatabaseConverter:
         self,
         output_path: Optional[str] = None,
         limit: Optional[int] = None,
-        offset: int = 0
+        offset: int = 0,
+        encrypt_private_keys: bool = False,
     ) -> Optional[str]:
         """
         Export wallets to TSV format (tab-separated values).
@@ -626,7 +644,8 @@ class DatabaseConverter:
                 row_count = 0
                 for batch in self.fetch_wallets(limit, offset):
                     for wallet_id, address, private_key in batch:
-                        writer.writerow([wallet_id, address, private_key])
+                        key_out = encrypt_secret(private_key) if encrypt_private_keys else private_key
+                        writer.writerow([wallet_id, address, key_out])
                         row_count += 1
 
             self.logger.info(f"Exported {row_count} wallets to TSV: {filepath}")
@@ -783,6 +802,21 @@ Examples:
         action="store_true",
         help="Suppress console output"
     )
+    parser.add_argument(
+        "--allow-private-key-export",
+        action="store_true",
+        help="Explicitly allow private-key export (required)"
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip interactive YES confirmation prompt"
+    )
+    parser.add_argument(
+        "--encrypt-private-keys",
+        action="store_true",
+        help="Encrypt exported private keys with environment-derived key settings"
+    )
 
     args = parser.parse_args()
 
@@ -844,6 +878,10 @@ def main() -> None:
             total_wallets
         )
 
+        require_export_permission(args.allow_private_key_export)
+        if not args.yes:
+            require_interactive_confirmation()
+
         # Perform export with timing
         start_time = time.time()
 
@@ -851,17 +889,17 @@ def main() -> None:
         output_file: Optional[str] = None
 
         if args.format == "txt":
-            output_file = converter.export_txt(args.output, args.limit, args.offset)
+            output_file = converter.export_txt(args.output, args.limit, args.offset, args.encrypt_private_keys)
         elif args.format == "json":
-            output_file = converter.export_json(args.output, args.limit, args.offset)
+            output_file = converter.export_json(args.output, args.limit, args.offset, args.encrypt_private_keys)
         elif args.format == "csv":
-            output_file = converter.export_csv(args.output, args.limit, args.offset)
+            output_file = converter.export_csv(args.output, args.limit, args.offset, args.encrypt_private_keys)
         elif args.format == "sql":
-            output_file = converter.export_sql(args.output, args.limit, args.offset)
+            output_file = converter.export_sql(args.output, args.limit, args.offset, args.encrypt_private_keys)
         elif args.format == "ndjson":
-            output_file = converter.export_ndjson(args.output, args.limit, args.offset)
+            output_file = converter.export_ndjson(args.output, args.limit, args.offset, args.encrypt_private_keys)
         elif args.format == "tsv":
-            output_file = converter.export_tsv(args.output, args.limit, args.offset)
+            output_file = converter.export_tsv(args.output, args.limit, args.offset, args.encrypt_private_keys)
 
         if output_file:
             runtime = time.time() - start_time

@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+from utils.secrets import decrypt_secret, redact_text
+
 import yaml
 from dotenv import load_dotenv
 from eth_account import Account
@@ -45,6 +47,13 @@ def load_settings(path: str | Path | None = None) -> Dict[str, Any]:
     return merged
 
 
+class _RedactionFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = redact_text(record.getMessage())
+        record.args = ()
+        return True
+
+
 def setup_rotating_logger(name: str, file_name: str, level: int = logging.INFO) -> logging.Logger:
     """Set up rotating logger under logs/ directory."""
     log_dir = project_root() / "logs"
@@ -68,13 +77,14 @@ def setup_rotating_logger(name: str, file_name: str, level: int = logging.INFO) 
         )
     )
 
+    handler.addFilter(_RedactionFilter())
     logger.addHandler(handler)
     return logger
 
 
 def secure_private_key(raw_value: str) -> str:
     """Return plaintext private key from plain or optional encrypted JSON keystore."""
-    value = raw_value.strip()
+    value = decrypt_secret(raw_value.strip())
     if not value:
         raise ValueError("Empty private key value")
 
