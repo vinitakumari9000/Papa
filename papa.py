@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Typer CLI for modular multi-chain wallet orchestration."""
 
-from __future__ import annotations
-
 import secrets
 from typing import Optional
 
@@ -10,6 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from diagnostics import Doctor, render_json, render_rich_table
 from utils.helpers import load_settings
 from wallet.balance import BalanceService
 from wallet.chains import ChainRegistry
@@ -136,7 +135,7 @@ def batch_send_command(
     to: str = typer.Option(..., "--to", help="Destination address"),
     amount: str = typer.Option(...),
     chain: Optional[str] = typer.Option(None),
-    random_wallet: bool = typer.Option(True, help="Randomly choose sender wallets"),
+    random_wallet: bool = typer.Option(True, "--random-wallet/--sequential-wallet", help="Randomly choose sender wallets"),
     tag: Optional[str] = typer.Option(None, help="Filter sender wallets by tag"),
     db: Optional[str] = typer.Option(None),
 ) -> None:
@@ -159,6 +158,23 @@ def batch_send_command(
             chain_key=selected_chain,
         )
         console.print(f"[{i + 1}/{count}] {result.tx_hash} -> {result.explorer_url}")
+
+
+
+
+@app.command("doctor")
+def doctor_command(json_output: bool = typer.Option(False, "--json-output/--no-json-output", help="Output machine-readable JSON")) -> None:
+    """Run system diagnostics checks."""
+    results = Doctor().run()
+
+    if json_output:
+        console.print_json(data=render_json(results))
+        has_fail = any(r.status == "fail" for r in results)
+        raise typer.Exit(code=1 if has_fail else 0)
+
+    console.print(render_rich_table(results))
+    has_fail = any(r.status == "fail" for r in results)
+    raise typer.Exit(code=1 if has_fail else 0)
 
 
 @networks_app.command("list")
