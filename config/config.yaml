@@ -1,0 +1,17 @@
+default_chain: ethereum
+rpc_urls:
+  ethereum: https://rpc.ankr.com/eth
+  polygon: https://rpc.ankr.com/polygon
+  arbitrum: https://rpc.ankr.com/arbitrum
+ollama:
+  model: qwen2.5:3b
+  host: http://127.0.0.1:11434
+database:
+  path: wallets.db
+encryption:
+  kdf_iterations: 250000
+  require_password: true
+export:
+  default_format: json
+  allow_unsafe: false
+  directory: exports
