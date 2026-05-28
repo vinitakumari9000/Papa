@@ -1,0 +1,19 @@
+default_chain: skale_base_sepolia
+rpc_urls:
+  skale_base_sepolia: https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha
+database_path: wallets.db
+config_dir: config
+encryption:
+  enabled: true
+  pbkdf2_iterations: 390000
+ollama:
+  host: http://127.0.0.1:11434
+  model: qwen2.5:3b
+  timeout_seconds: 60
+export:
+  default_format: csv
+  allow_plaintext_private_keys: false
+logging:
+  directory: logs
+  max_bytes: 10485760
+  backup_count: 5

@@ -12,6 +12,7 @@ from typing import Any, Dict
 import yaml
 from dotenv import load_dotenv
 from eth_account import Account
+from project.wallet.encryption import decrypt_secret, is_encrypted_payload
 
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
@@ -77,6 +78,15 @@ def secure_private_key(raw_value: str) -> str:
     value = raw_value.strip()
     if not value:
         raise ValueError("Empty private key value")
+
+    if is_encrypted_payload(value):
+        password = os.getenv("PAPA_WALLET_PASSWORD")
+        if not password:
+            raise ValueError(
+                "Encrypted wallet detected but PAPA_WALLET_PASSWORD is not set. "
+                "Set it with: export PAPA_WALLET_PASSWORD='your_password'"
+            )
+        return decrypt_secret(value, password)
 
     if value.startswith("{") and value.endswith("}"):
         password = os.getenv("PAPA_WALLET_PASSWORD")

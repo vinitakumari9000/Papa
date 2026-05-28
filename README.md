@@ -1,66 +1,17 @@
-# Papa Wallet System
+# Papa — Local AI Wallet Orchestration Platform
 
-Papa now includes a modular multi-chain wallet orchestration layer while preserving the legacy tools:
+Papa is an offline-first wallet orchestration platform with a natural-language CLI, safe tool routing, and local LLM integration through Ollama (`qwen2.5:3b` default).
 
-- `wallet_gen.py` (existing wallet generation into SQLite)
-- `converter.py` (existing wallet export converter)
-- `papa.py` (new Typer CLI for tx, balances, networks, and history)
+## Highlights
 
-## Backward Compatibility
+- Local AI command mode (`papa ai`) with strict tool-call JSON parsing
+- Safe execution router (registered tools only, no shell execution from LLM)
+- AES-GCM encrypted wallet storage (password-based)
+- Legacy compatibility preserved (`wallet_gen.py`, `converter.py`, `papa.py`)
+- Modern CLI commands: `generate`, `export`, `wallets`, `config`, `doctor`, plus legacy tx commands
+- Rotating logs: `logs/ai.log`, `logs/wallet.log`, `logs/export.log`, `logs/errors.log`
 
-The original `wallets` table is preserved:
-
-```sql
-CREATE TABLE wallets (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  address TEXT NOT NULL UNIQUE,
-  private_key TEXT NOT NULL
-);
-```
-
-Legacy commands continue to work:
-
-```bash
-python wallet_gen.py --count 1000
-python converter.py --format json
-```
-
-## New Architecture
-
-```text
-config/
-  networks.json
-  settings.yaml
-wallet/
-  balance.py
-  chains.py
-  database.py
-  gas.py
-  nonce.py
-  tx_sender.py
-ai/
-  parser.py
-  router.py
-  tools.py
-utils/
-  validators.py
-  formatters.py
-  helpers.py
-papa.py
-install.sh
-```
-
-## Database Extensions
-
-Migrations create additional tables safely:
-
-- `transactions`
-- `network_configs`
-- `wallet_tags`
-
-No existing tables are dropped or altered destructively.
-
-## Install
+## Installation
 
 ```bash
 chmod +x install.sh
@@ -68,67 +19,119 @@ chmod +x install.sh
 source .venv/bin/activate
 ```
 
-## CLI Usage
+Installer actions:
 
-### List wallets
+- Detect OS (Ubuntu/Debian/CentOS and compatible)
+- Create virtualenv + install Python dependencies
+- Initialize config/database/log directories
+- Install Ollama when possible
+- Pull model `qwen2.5:3b`
+- Run initial `papa doctor`
+
+## Command Reference
 
 ```bash
+python papa.py generate --count 25
+python papa.py export --format csv --output exports/wallets.csv
 python papa.py wallets --limit 20
+python papa.py config show
+python papa.py doctor
+python papa.py ai
 ```
 
-### Send transaction
+Legacy compatibility remains:
 
 ```bash
-python papa.py send --from 1 --to 0xABCDEFabcdefABCDEFabcdefABCDEFabcdefABCD --amount 1wei --chain skale_base_sepolia
+python wallet_gen.py --count 1000
+python converter.py --format json
 ```
 
-### Check balance
+## AI Mode
+
+Start interactive assistant:
 
 ```bash
-python papa.py balance --wallet 1 --chain skale_base_sepolia
+python papa.py ai
 ```
 
-### Show transaction history
+Example request:
 
-```bash
-python papa.py tx-history --limit 50
+`generate 25 wallets and export csv`
+
+Expected structured action:
+
+```json
+{
+  "tool": "generate_wallets",
+  "args": {"count": 25, "export": "csv"}
+}
 ```
 
-### Network management
+## Security Model
 
-```bash
-python papa.py networks list
-python papa.py networks add my_chain "My Chain" https://rpc.example https://explorer.example TOKEN 18 12345
-python papa.py networks remove my_chain
+- Wallet secrets are encrypted at rest with AES-GCM when using `papa generate` (default encrypted mode)
+- Plaintext private key export is blocked unless `--unsafe-export` is explicitly provided
+- Tool router executes only registered internal handlers
+- No arbitrary shell/SQL/filesystem delete operations from AI output
+
+## Configuration
+
+Primary config: `config/config.yaml`
+
+Includes:
+
+- default chain + RPCs
+- Ollama host/model
+- DB path
+- encryption settings
+- export defaults
+- logging settings
+
+Environment overrides:
+
+- `PAPA_DB_PATH`
+- `PAPA_OLLAMA_HOST`
+- `PAPA_OLLAMA_MODEL`
+
+## Health Checks
+
+`python papa.py doctor` validates:
+
+- Ollama installation/running/model presence
+- Database connectivity
+- Config/folder readiness
+- Python dependency availability
+
+## Architecture
+
+```text
+project/
+  ai/
+    llm.py
+    prompts.py
+    parser.py
+    router.py
+    tools.py
+  wallet/
+    generator.py
+    exporter.py
+    storage.py
+    encryption.py
+  database/
+    manager.py
+  cli/
+    main.py
+  setup/
+    install.sh
+    setup.py
 ```
 
-### Batch send (multi-wallet ready)
+## Migration Notes
 
-```bash
-python papa.py batch-send --count 50 --to 0xABCDEFabcdefABCDEFabcdefABCDEFabcdefABCD --amount 1wei --chain skale_base_sepolia
-```
+- Existing `wallets` table schema remains unchanged for compatibility.
+- Use `python papa.py generate --migrate-plaintext` to encrypt existing plaintext keys in-place after confirming password.
 
-## Config
+## Screenshots
 
-### `config/networks.json`
-
-Network metadata is externalized and unlimited chains can be added.
-
-### `config/settings.yaml`
-
-Contains default chain, DB path, gas strategy, retry policy, and RPC timeout.
-
-## Security Notes
-
-- Private keys are never printed by the new CLI.
-- Sensitive key handling is masked and optional encrypted JSON keystore values are supported via `PAPA_WALLET_PASSWORD`.
-- Logs are rotated under `logs/` (`tx.log`, `wallet.log`, `errors.log`).
-
-## AI-Ready Placeholders
-
-The `ai/` package provides parser/router scaffolding for future Ollama integration.
-
-Example intent parsing supported:
-
-`send 1 wei from wallet 2 to wallet 8` →
-`{"tool":"send_transaction","args":{"from_wallet":2,"to_wallet":8,"amount":"1wei"}}`
+- _CLI screenshots placeholder_
+- _AI mode walkthrough placeholder_
