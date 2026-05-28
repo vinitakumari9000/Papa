@@ -1,10 +1,11 @@
 # Papa Wallet System
 
-Papa now includes a modular multi-chain wallet orchestration layer while preserving the legacy tools:
+Papa now includes a modular multi-chain wallet orchestration layer while preserving legacy entrypoints via compatibility adapters:
 
-- `wallet_gen.py` (existing wallet generation into SQLite)
-- `converter.py` (existing wallet export converter)
-- `papa.py` (new Typer CLI for tx, balances, networks, and history)
+- `cli/wallet_gen_cli.py` (wallet generation CLI implementation)
+- `cli/converter_cli.py` (wallet export converter CLI implementation)
+- `cli/papa_cli.py` (Typer CLI implementation for tx, balances, networks, and history)
+- Root `wallet_gen.py`, `converter.py`, and `papa.py` forward to the new CLI modules
 
 ## Backward Compatibility
 
@@ -28,9 +29,22 @@ python converter.py --format json
 ## New Architecture
 
 ```text
+ai/
+cli/
+  papa_cli.py
+  wallet_gen_cli.py
+  converter_cli.py
 config/
   networks.json
   settings.yaml
+database/
+  manager.py
+setup/
+  bootstrap.py
+utils/
+  validators.py
+  formatters.py
+  helpers.py
 wallet/
   balance.py
   chains.py
@@ -38,15 +52,11 @@ wallet/
   gas.py
   nonce.py
   tx_sender.py
-ai/
-  parser.py
-  router.py
-  tools.py
-utils/
-  validators.py
-  formatters.py
-  helpers.py
+
+# Compatibility entrypoints retained at repo root:
 papa.py
+wallet_gen.py
+converter.py
 install.sh
 ```
 
@@ -132,3 +142,21 @@ Example intent parsing supported:
 
 `send 1 wei from wallet 2 to wallet 8` →
 `{"tool":"send_transaction","args":{"from_wallet":2,"to_wallet":8,"amount":"1wei"}}`
+
+
+## Python Module Imports
+
+New import targets:
+
+```python
+from cli.papa_cli import app
+from cli.wallet_gen_cli import main as wallet_gen_main
+from cli.converter_cli import main as converter_main
+from database import DatabaseManager
+```
+
+Backward-compatible imports continue to work:
+
+```python
+from wallet.database import DatabaseManager
+```
